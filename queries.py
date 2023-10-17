@@ -21,7 +21,7 @@ def cca_ma_test(timeout=10):
     # Consider the no loss case for simplicity
     # s.add(v.L[0] == 0)
     # Ask for < 10% utilization. Can be made arbitrarily small
-    # s.add(v.S[-1] - v.S[0] < 0.1 * c.C * c.T)
+    s.add(v.S[-1] - v.S[0] > 0.9 * c.C * c.T)
     # make_periodic(c, s, v, 2 * c.R)
     qres = run_query(c, s, v, 50)
     print("Satisfiability:", qres.satisfiable)

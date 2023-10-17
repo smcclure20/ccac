@@ -41,7 +41,7 @@ class MAVariables:
         self.chosen_cadd = [[s.Real(f"ma_chosen_cadd_{n},{t}") for t in range(c.T)] for n in range(c.N)]
         self.chosen_rate = [[s.Real(f"ma_chosen_rate_{n},{t}") for t in range(c.T)] for n in range(c.N)]
 
-        self.matches = [[s.BoolVector(f"ma_matches_{n},{t}", NUM_RULES) for t in range(c.T)] for n in range(c.N)]
+        self.matches = [[[s.Bool(f"ma_matches_{n},{t},{i}") for i in range(NUM_RULES)] for t in range(c.T)] for n in range(c.N)]
         
         self.rules = [Rule(Action(s.Real(f"ma_rules_cmult{r}"), s.Real(f"ma_rules_cadd{r}"), s.Real(f"ma_rules_rate{r}")),
                                      {"rewma": SignalRange(s.Real(f"ma_rules_rewma_low_{r}"), s.Real(f"ma_rules_rewma_hi_{r}")), 
@@ -49,14 +49,10 @@ class MAVariables:
                                       "srewma": SignalRange(s.Real(f"ma_rules_srewma_low_{r}"), s.Real(f"ma_rules_srewma_hi_{r}")), 
                                       "rttr": SignalRange(s.Real(f"ma_rules_rttr_low_{r}"), s.Real(f"ma_rules_rttr_hi_{r}"))
                                       }) for r in range(NUM_RULES)]
-        self.default_rule = Action(s.Real(f"ma_rules_cmult_d"), s.Real(f"ma_rules_cadd_d"), s.Real(f"ma_rules_rate_d"))
 
 
 def cca_ma(c: ModelConfig, s: MySolver, v: Variables):
     cv = MAVariables(c, s)
-
-    s.add(cv.default_rule.cwnd_mult >= 0)
-    s.add(cv.default_rule.rate >= 0)
 
     for rule1 in cv.rules:
         # Enforce on each rule that low < high
@@ -70,6 +66,8 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables):
 
         # Enforce that the rule does not overlap with any other rule (at least one dimension is non-overlapping)
         for rule2 in cv.rules:
+            if rule1 == rule2:
+                continue
             s.add(Or(Or(rule1.signal_space["rewma"].high <= rule2.signal_space["rewma"].low, rule1.signal_space["rewma"].low >= rule2.signal_space["rewma"].high), 
                      Or(rule1.signal_space["sewma"].high <= rule2.signal_space["sewma"].low, rule1.signal_space["sewma"].low >= rule2.signal_space["sewma"].high), 
                      Or(rule1.signal_space["srewma"].high <= rule2.signal_space["srewma"].low, rule1.signal_space["srewma"].low >= rule2.signal_space["srewma"].high), 
