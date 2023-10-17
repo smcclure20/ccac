@@ -4,6 +4,7 @@ from z3 import And, Sum, Implies, Or, Not, If
 from cca_aimd import cca_aimd
 from cca_bbr import cca_bbr
 from cca_copa import cca_copa
+from cca_matchaction import cca_ma
 from config import ModelConfig
 from pyz3_utils import MySolver
 from variables import Variables
@@ -257,6 +258,8 @@ def make_solver(c: ModelConfig,
         cca_bbr(c, s, v)
     elif c.cca == "copa":
         cca_copa(c, s, v)
+    elif c.cca == "cca_ma":
+        cca_ma(c, s, v)
     elif c.cca == "any":
         pass
     else:
