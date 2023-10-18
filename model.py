@@ -4,7 +4,7 @@ from z3 import And, Sum, Implies, Or, Not, If
 from cca_aimd import cca_aimd
 from cca_bbr import cca_bbr
 from cca_copa import cca_copa
-from cca_matchaction import cca_ma
+from cca_matchaction import cca_ma, MAVariables
 from config import ModelConfig
 from pyz3_utils import MySolver
 from variables import Variables
@@ -228,7 +228,7 @@ def cca_const(c: ModelConfig, s: MySolver, v: Variables):
 
 def make_solver(c: ModelConfig,
                 s: Optional[MySolver] = None,
-                v: Optional[Variables] = None) -> Tuple[MySolver, Variables]:
+                v: Optional[Variables] = None) -> Tuple[MySolver, Variables, Optional[MAVariables]]:
     if s is None:
         s = MySolver()
     if v is None:
@@ -259,13 +259,14 @@ def make_solver(c: ModelConfig,
     elif c.cca == "copa":
         cca_copa(c, s, v)
     elif c.cca == "cca_ma":
-        cca_ma(c, s, v)
+        cv = cca_ma(c, s, v)
+        return (s, v, cv)
     elif c.cca == "any":
         pass
     else:
         assert(False)
 
-    return (s, v)
+    return (s, v, None)
 
 
 if __name__ == "__main__":

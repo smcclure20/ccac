@@ -6,7 +6,7 @@ from config import ModelConfig
 from pyz3_utils import MySolver
 from variables import Variables
 
-NUM_RULES = 50
+NUM_RULES = 10
 
 class Action:
     def __init__(self, cwnd_mult, cwnd_add, rate):
@@ -43,7 +43,7 @@ class MAVariables:
 
         self.matches = [[[s.Bool(f"ma_matches_{n},{t},{i}") for i in range(NUM_RULES)] for t in range(c.T)] for n in range(c.N)]
         
-        self.rules = [Rule(Action(s.Real(f"ma_rules_cmult{r}"), s.Real(f"ma_rules_cadd{r}"), s.Real(f"ma_rules_rate{r}")),
+        self.rules = [Rule(Action(s.Real(f"ma_rules_cmult_{r}"), s.Real(f"ma_rules_cadd_{r}"), s.Real(f"ma_rules_rate_{r}")),
                                      {"rewma": SignalRange(s.Real(f"ma_rules_rewma_low_{r}"), s.Real(f"ma_rules_rewma_hi_{r}")), 
                                       "sewma": SignalRange(s.Real(f"ma_rules_sewma_low_{r}"), s.Real(f"ma_rules_sewma_hi_{r}")), 
                                       "srewma": SignalRange(s.Real(f"ma_rules_srewma_low_{r}"), s.Real(f"ma_rules_srewma_hi_{r}")), 
@@ -51,7 +51,7 @@ class MAVariables:
                                       }) for r in range(NUM_RULES)]
 
 
-def cca_ma(c: ModelConfig, s: MySolver, v: Variables):
+def cca_ma(c: ModelConfig, s: MySolver, v: Variables) -> MAVariables:
     cv = MAVariables(c, s)
 
     for rule1 in cv.rules:
@@ -60,6 +60,15 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables):
         s.add(rule1.signal_space["sewma"].low < rule1.signal_space["sewma"].high)
         s.add(rule1.signal_space["srewma"].low < rule1.signal_space["srewma"].high)
         s.add(rule1.signal_space["rttr"].low < rule1.signal_space["rttr"].high)
+
+        s.add(rule1.signal_space["rewma"].low >= 0)
+        s.add(rule1.signal_space["sewma"].low >= 0)
+        s.add(rule1.signal_space["srewma"].low >= 0)
+        s.add(rule1.signal_space["rttr"].low >= 0)
+        s.add(rule1.signal_space["rewma"].high >= 0)
+        s.add(rule1.signal_space["sewma"].high >= 0)
+        s.add(rule1.signal_space["srewma"].high >= 0)
+        s.add(rule1.signal_space["rttr"].high >= 0)
 
         s.add(rule1.action.cwnd_mult >= 0)
         s.add(rule1.action.rate >= 0)
@@ -77,31 +86,50 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables):
     salpha = 1 / 256
 
     for n in range(c.N):
-        s.add(cv.last_pkt_rcv_time[n][0] == 0)
+        s.add(cv.last_pkt_rcv_time[n][0] == 0) # One option: don't require this and then it isn't necessarily starting from initial
         s.add(cv.last_pkt_snd_time[n][0] == 0)
         s.add(cv.min_rtt[n][0] == 10000000000)
+        s.add(v.c_f[n][0] >= 0)
 
         for t in range(c.T):
-            s.add(cv.last_pkt_rcv_time[n][t] == If((v.S_f[n][t-c.R]) > (v.S_f[n][t-c.R-1]), t, cv.last_pkt_rcv_time[n][t-1]))
-            s.add(cv.last_pkt_snd_time[n][t] == If(v.A_f[n][t] > v.S_f[n][t-1], t, cv.last_pkt_rcv_time[n][t-1]))
+            if t == 0:
+                continue
+            if t - c.R > 0:
+                s.add(cv.last_pkt_rcv_time[n][t] == If((v.S_f[n][t-c.R]) > (v.S_f[n][t-c.R-1]), t, cv.last_pkt_rcv_time[n][t-1]))
+            s.add(cv.last_pkt_snd_time[n][t] == If(v.A_f[n][t] > v.A_f[n][t-1], t, cv.last_pkt_rcv_time[n][t-1]))
 
-            for dt in range(c.T):
-                s.add(Implies(And(cv.last_pkt_rcv_time[n][t] == t, v.S_f[n][t] == v.A_f[n][t-dt]), cv.rtt[n][t] == dt))
+            # Set the RTT to the time interval necessary for arrival bytes = server bytes (but get the timestamp of the first time the arrival curve had this value)
+            for dt in range(t-1):
+                s.add(Implies(And(
+                                  v.S_f[n][t-c.R] <= v.A_f[n][t-dt], 
+                                  v.S_f[n][t-c.R] > v.A_f[n][t-dt-1]), 
+                                  cv.rtt[n][t] == t-c.R - (t-dt-1 + (v.S_f[n][t-c.R] - v.A_f[n][t-dt-1]) / (v.A_f[n][t-dt] - v.A_f[n][t-dt-1]))))
 
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, cv.min_rtt[n][t] == If(cv.rtt[n][t] < cv.min_rtt[n][t-1], cv.rtt[n][t], cv.min_rtt[n][t-1])))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                     cv.min_rtt[n][t] == If(cv.rtt[n][t] < cv.min_rtt[n][t-1], cv.rtt[n][t], cv.min_rtt[n][t-1]),
+                     cv.min_rtt[n][t] == cv.min_rtt[n][t-1]))
 
+            # TODO: FOR ALL THESE CHANGES TO STATE BASED ON A PKT BEING RECEIVED, THAT LETS IT DO ANYTHING WHEN THERE ISNT ONE
             # If you received a packet, update signal values and find rule
             # If it's the first packet, set values without weighting
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, If(cv.last_pkt_rcv_time != 0, 
-                                                        cv.rewma[n][t] == alpha * (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1]) + (1-alpha) * cv.rewma[n][t], 
-                                                        cv.rewma[n][t] == cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])))
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, If(cv.last_pkt_snd_time != 0, 
-                                                        cv.sewma[n][t] == alpha * (cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1]) + (1-alpha) * cv.sewma[n][t],
-                                                        cv.sewma[n][t] == cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1])))
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, If(cv.last_pkt_rcv_time != 0, 
-                                                        cv.srewma[n][t] == salpha * (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1]) + (1-salpha) * cv.srewma[n][t],
-                                                        cv.srewma[n][t] == cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])))
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, cv.rttr[n][t] == cv.rtt[n][t] / cv.min_rtt[n][t]))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                     If(cv.last_pkt_rcv_time != 0, 
+                        cv.rewma[n][t] == alpha * (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1]) + (1-alpha) * cv.rewma[n][t], 
+                        cv.rewma[n][t] == cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1]),
+                     cv.rewma[n][t] == cv.rewma[n][t-1]))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                     If(cv.last_pkt_snd_time != 0, 
+                        cv.sewma[n][t] == alpha * (cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1]) + (1-alpha) * cv.sewma[n][t],
+                        cv.sewma[n][t] == cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1]),
+                     cv.sewma[n][t] == cv.sewma[n][t-1]))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t,
+                     If(cv.last_pkt_rcv_time != 0,
+                        cv.srewma[n][t] == salpha * (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1]) + (1-salpha) * cv.srewma[n][t],
+                        cv.srewma[n][t] == cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1]),
+                     cv.srewma[n][t] == cv.srewma[n][t-1]))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                     cv.rttr[n][t] == cv.rtt[n][t] / cv.min_rtt[n][t],
+                     cv.rttr[n][t] == cv.rttr[n][t-1]))
 
             # Find the rule that matches the signal values
             for i, rule in enumerate(cv.rules):
@@ -122,6 +150,10 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables):
             s.add(If(cv.last_pkt_rcv_time[n][t] == t, And(AtMost(*cv.matches[n][t], 1), AtLeast(*cv.matches[n][t], 1)), AtMost(*cv.matches[n][t], 0)))
 
             # Set the rate and cwnd based on the rule
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, v.c_f[n][t] == cv.chosen_cmult[n][t] * v.c_f[n][t-1] + cv.chosen_cadd[n][t]))
-            s.add(Implies(cv.last_pkt_rcv_time[n][t] == t, v.r_f[n][t] == cv.chosen_rate[n][t]))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                     If(cv.chosen_cmult[n][t] * v.c_f[n][t-1] + cv.chosen_cadd[n][t] >= 0, 
+                        v.c_f[n][t] == cv.chosen_cmult[n][t] * v.c_f[n][t-1] + cv.chosen_cadd[n][t], v.c_f[n][t] == 0),
+                       v.c_f[n][t] == v.c_f[n][t-1]))
+            s.add(If(cv.last_pkt_rcv_time[n][t] == t, v.r_f[n][t] == cv.chosen_rate[n][t], v.r_f[n][t] == v.r_f[n][t-1]))
 
+    return cv
