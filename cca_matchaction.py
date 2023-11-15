@@ -1,6 +1,6 @@
 '''  '''
 
-from z3 import And, If, Implies, Not, Or, AtMost, AtLeast, fpMax
+from z3 import And, If, Implies, Not, Or, AtMost, AtLeast, fpMax, Xor, Function, RealVector, RealSort
 
 from config import ModelConfig
 from pyz3_utils import MySolver
@@ -39,24 +39,41 @@ class MAVariables:
         self.rttr = [[s.Real(f"ma_rttr_{n},{t}") for t in range(c.T)] for n in range(c.N)]
         self.min_rtt = [[s.Real(f"ma_min_rtt_{n},{t}") for t in range(c.T)] for n in range(c.N)]
 
-        self.chosen_cmult = [[s.Real(f"ma_chosen_cmult_{n},{t}") for t in range(c.T)] for n in range(c.N)]
-        self.chosen_cadd = [[s.Real(f"ma_chosen_cadd_{n},{t}") for t in range(c.T)] for n in range(c.N)]
-        self.chosen_rate = [[s.Real(f"ma_chosen_rate_{n},{t}") for t in range(c.T)] for n in range(c.N)]
+        # self.chosen_cmult = [[s.Real(f"ma_chosen_cmult_{n},{t}") for t in range(c.T)] for n in range(c.N)]
+        # self.chosen_cadd = [[s.Real(f"ma_chosen_cadd_{n},{t}") for t in range(c.T)] for n in range(c.N)]
+        # self.chosen_rate = [[s.Real(f"ma_chosen_rate_{n},{t}") for t in range(c.T)] for n in range(c.N)]
 
-        self.matches = [[[s.Bool(f"ma_matches_{n},{t},{i}") for i in range(NUM_RULES)] for t in range(c.T)] for n in range(c.N)]
+        # self.matches = [[[s.Bool(f"ma_matches_{n},{t},{i}") for i in range(NUM_RULES)] for t in range(c.T)] for n in range(c.N)]
+        # # # self.matches = [[s.Bool(f"ma_matches_{n},{t}") for t in range(c.T)] for n in range(c.N)]
         
-        self.rules = [Rule(Action(s.Real(f"ma_rules_cmult_{r}"), s.Real(f"ma_rules_cadd_{r}"), s.Real(f"ma_rules_rate_{r}")),
-                                     {"rewma": SignalRange(s.Real(f"ma_rules_rewma_low_{r}"), s.Real(f"ma_rules_rewma_hi_{r}")), 
-                                      "sewma": SignalRange(s.Real(f"ma_rules_sewma_low_{r}"), s.Real(f"ma_rules_sewma_hi_{r}")), 
-                                      "srewma": SignalRange(s.Real(f"ma_rules_srewma_low_{r}"), s.Real(f"ma_rules_srewma_hi_{r}")), 
-                                      "rttr": SignalRange(s.Real(f"ma_rules_rttr_low_{r}"), s.Real(f"ma_rules_rttr_hi_{r}"))
-                                      }) for r in range(NUM_RULES)]
+        # self.rules = [Rule(Action(s.Real(f"ma_rules_cmult_{r}"), s.Real(f"ma_rules_cadd_{r}"), s.Real(f"ma_rules_rate_{r}")),
+        #                              {"rewma": SignalRange(s.Real(f"ma_rules_rewma_low_{r}"), s.Real(f"ma_rules_rewma_hi_{r}")), 
+        #                               "sewma": SignalRange(s.Real(f"ma_rules_sewma_low_{r}"), s.Real(f"ma_rules_sewma_hi_{r}")), 
+        #                               "srewma": SignalRange(s.Real(f"ma_rules_srewma_low_{r}"), s.Real(f"ma_rules_srewma_hi_{r}")), 
+        #                               "rttr": SignalRange(s.Real(f"ma_rules_rttr_low_{r}"), s.Real(f"ma_rules_rttr_hi_{r}"))
+        #                               }) for r in range(NUM_RULES)]
+        
+        self.rule_func_cadd = s.FunctionVec(f"ma_rule_func_cadd", [RealSort(), RealSort(), RealSort()], [RealSort()])
+        self.rule_func_cmult = s.FunctionVec(f"ma_rule_func_cmult", [RealSort(), RealSort(), RealSort()], [RealSort()])
+        self.rule_func_rate = s.FunctionVec(f"ma_rule_func_rate", [RealSort(), RealSort(), RealSort()], [RealSort()])
+
+        # self.func_cwnd = s.FunctionVec(f"ma_func_cwnd", [RealSort(), RealSort()], [RealSort()])
+        # self.func_rate = s.FunctionVec(f"ma_func_rate", [RealSort(), RealSort()], [RealSort()])
+        
 
 
 def cca_ma(c: ModelConfig, s: MySolver, v: Variables) -> MAVariables:
     cv = MAVariables(c, s)
 
-    for rule1 in cv.rules:
+    #  # This terminates -> how can we get closer to this?
+    # for n in range(c.N):
+    #     for t in range(c.T):
+
+    #         s.add(v.c_f[n][t] == cv.func_cwnd([v.A_f[n][t], v.S_f[n][t]]))
+    #         s.add(v.r_f[n][t] == cv.func_rate([v.A_f[n][t], v.S_f[n][t]]))
+
+    # for rule1 in cv.rules:
+        # # Extra constraints to enforce a particular rule
         # s.add(rule1.signal_space["rewma"].low == 0)
         # s.add(rule1.signal_space["sewma"].low == 0)
         # # s.add(rule1.signal_space["srewma"].low == 0)
@@ -65,36 +82,36 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables) -> MAVariables:
         # s.add(rule1.signal_space["sewma"].high == c.C *10)
         # # s.add(rule1.signal_space["srewma"].high == c.C)
         # s.add(rule1.signal_space["rttr"].high == (c.R + c.D) / c.R)
-        # # s.add(rule1.action.cwnd_mult == 1)
-        # # s.add(rule1.action.cwnd_add == 0)
-        # # s.add(rule1.action.rate == c.C)
+        # s.add(rule1.action.cwnd_mult == 1)
+        # s.add(rule1.action.cwnd_add == 0)
+        # s.add(rule1.action.rate == c.C)
 
-        # Enforce on each rule that low < high
-        s.add(rule1.signal_space["rewma"].low < rule1.signal_space["rewma"].high)
-        s.add(rule1.signal_space["sewma"].low < rule1.signal_space["sewma"].high)
-        # s.add(rule1.signal_space["srewma"].low < rule1.signal_space["srewma"].high)
-        s.add(rule1.signal_space["rttr"].low < rule1.signal_space["rttr"].high)
+        # # Enforce on each rule that low < high
+        # s.add(rule1.signal_space["rewma"].low < rule1.signal_space["rewma"].high)
+        # s.add(rule1.signal_space["sewma"].low < rule1.signal_space["sewma"].high)
+        # # s.add(rule1.signal_space["srewma"].low < rule1.signal_space["srewma"].high)
+        # s.add(rule1.signal_space["rttr"].low < rule1.signal_space["rttr"].high)
 
-        s.add(rule1.signal_space["rewma"].low >= 0) # TODO: Can refine these
-        s.add(rule1.signal_space["sewma"].low >= 0)
-        # s.add(rule1.signal_space["srewma"].low >= 0)
-        s.add(rule1.signal_space["rttr"].low >= 0)
-        s.add(rule1.signal_space["rewma"].high >= 0)
-        s.add(rule1.signal_space["sewma"].high >= 0)
-        # s.add(rule1.signal_space["srewma"].high >= 0)
-        s.add(rule1.signal_space["rttr"].high >= 0)
+        # s.add(rule1.signal_space["rewma"].low >= 0) # TODO: Can refine these
+        # s.add(rule1.signal_space["sewma"].low >= 0)
+        # # s.add(rule1.signal_space["srewma"].low >= 0)
+        # s.add(rule1.signal_space["rttr"].low >= 0)
+        # s.add(rule1.signal_space["rewma"].high >= 0)
+        # s.add(rule1.signal_space["sewma"].high >= 0)
+        # # s.add(rule1.signal_space["srewma"].high >= 0)
+        # s.add(rule1.signal_space["rttr"].high >= 0)
 
-        s.add(rule1.action.cwnd_mult >= 0)
-        s.add(rule1.action.rate >= 0)
+        # s.add(rule1.action.cwnd_mult >= 0)
+        # s.add(rule1.action.rate >= 0)
 
-        # Enforce that the rule does not overlap with any other rule (at least one dimension is non-overlapping)
-        for rule2 in cv.rules:
-            if rule1 == rule2:
-                continue
-            s.add(Or(Or(rule1.signal_space["rewma"].high <= rule2.signal_space["rewma"].low, rule1.signal_space["rewma"].low >= rule2.signal_space["rewma"].high), 
-                     Or(rule1.signal_space["sewma"].high <= rule2.signal_space["sewma"].low, rule1.signal_space["sewma"].low >= rule2.signal_space["sewma"].high), 
-                    #  Or(rule1.signal_space["srewma"].high <= rule2.signal_space["srewma"].low, rule1.signal_space["srewma"].low >= rule2.signal_space["srewma"].high), 
-                     Or(rule1.signal_space["rttr"].high <= rule2.signal_space["rttr"].low, rule1.signal_space["rttr"].low >= rule2.signal_space["rttr"].high)))
+        # # Enforce that the rule does not overlap with any other rule (at least one dimension is non-overlapping)
+        # for rule2 in cv.rules:
+        #     if rule1 == rule2:
+        #         continue
+        #     s.add(Or(Or(rule1.signal_space["rewma"].high <= rule2.signal_space["rewma"].low, rule1.signal_space["rewma"].low >= rule2.signal_space["rewma"].high), 
+        #              Or(rule1.signal_space["sewma"].high <= rule2.signal_space["sewma"].low, rule1.signal_space["sewma"].low >= rule2.signal_space["sewma"].high), 
+        #             #  Or(rule1.signal_space["srewma"].high <= rule2.signal_space["srewma"].low, rule1.signal_space["srewma"].low >= rule2.signal_space["srewma"].high), 
+        #              Or(rule1.signal_space["rttr"].high <= rule2.signal_space["rttr"].low, rule1.signal_space["rttr"].low >= rule2.signal_space["rttr"].high)))
 
     alpha = 1 / 8
     salpha = 1 / 256
@@ -103,7 +120,7 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables) -> MAVariables:
         s.add(cv.last_pkt_rcv_time[n][0] <= 0)
         s.add(If(v.A_f[n][0] > 0, cv.last_pkt_snd_time[n][0] == 0, cv.last_pkt_snd_time[n][0] <= 0))
         s.add(And(cv.rewma[n][0] >= 0, cv.rewma[n][0] <= c.C)) # Might need to bound these more if it is using them to cheat -- how would we do that?
-        s.add(cv.sewma[n][0] >= 0) # Could add that this should be less than the highest sending rate
+        s.add(cv.sewma[n][0] > 0) # Could add that this should be less than the highest sending rate
         # s.add(And(cv.srewma[n][0] >= 0, cv.srewma[n][0] <= c.C))
         s.add(And(cv.rttr[n][0] >= 1, cv.rttr[n][0] <= (c.R + c.D) / c.R)) # Think about this more
         s.add(cv.min_rtt[n][0] >= c.R)
@@ -119,7 +136,7 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables) -> MAVariables:
 
             # Set the RTT to the time interval necessary for arrival bytes = server bytes (but get the timestamp of the first time the arrival curve had this value)
             for dt in range(t-1): # TODO: Think about this some more
-                s.add(Implies(And(
+                s.add(Implies(And( # Should this be an IF?
                                   v.S_f[n][t-c.R] <= v.A_f[n][t-dt], 
                                   v.S_f[n][t-c.R] > v.A_f[n][t-dt-1]), 
                                   cv.rtt[n][t] == t-c.R - (t-dt-1 + (v.S_f[n][t-c.R] - v.A_f[n][t-dt-1]) / (v.A_f[n][t-dt] - v.A_f[n][t-dt-1]))))
@@ -129,41 +146,83 @@ def cca_ma(c: ModelConfig, s: MySolver, v: Variables) -> MAVariables:
                      cv.min_rtt[n][t] == cv.min_rtt[n][t-1]))
 
             # If you received a packet, update signal values and find rule
-            if t > 0:
-                s.add(If(cv.last_pkt_rcv_time[n][t] == t,
+            if t > c.R:
+                # s.add(If(cv.last_pkt_rcv_time[n][t] == t,
+                #         cv.rewma[n][t] == alpha * ((v.S_f[n][t-c.R] - v.S_f[n][t-c.R-1]) / (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])) + (1-alpha) * cv.rewma[n][t-1],
+                #         cv.rewma[n][t] == cv.rewma[n][t-1]))
+                # s.add(If(cv.last_pkt_snd_time[n][t] == t,
+                #         cv.sewma[n][t] == alpha * ((v.A_f[n][t] - v.A_f[n][t-1]) / (cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1])) + (1-alpha) * cv.sewma[n][t-1],
+                #         cv.sewma[n][t] == cv.sewma[n][t-1]))
+                # # s.add(If(cv.last_pkt_rcv_time[n][t] == t,
+                # #         cv.srewma[n][t] == salpha * ((v.S_f[n][t-c.R] - v.S_f[n][t-c.R-1]) / (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])) + (1-salpha) * cv.srewma[n][t-1],
+                # #         cv.srewma[n][t] == cv.srewma[n][t-1]))
+                # s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                #         cv.rttr[n][t] == cv.rtt[n][t] / cv.min_rtt[n][t],
+                #         cv.rttr[n][t] == cv.rttr[n][t-1]))
+
+                # Not fast
+                s.add(If((v.S_f[n][t-c.R]) > (v.S_f[n][t-c.R-1]),
                         cv.rewma[n][t] == alpha * ((v.S_f[n][t-c.R] - v.S_f[n][t-c.R-1]) / (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])) + (1-alpha) * cv.rewma[n][t-1],
                         cv.rewma[n][t] == cv.rewma[n][t-1]))
-                s.add(If(cv.last_pkt_snd_time[n][t] == t,
-                        cv.sewma[n][t] == alpha * ((v.A_f[n][t] - v.A_f[n][t-1]) / (cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1])) + (1-alpha) * cv.sewma[n][t-1],
-                        cv.sewma[n][t] == cv.sewma[n][t-1]))
+
                 # s.add(If(cv.last_pkt_rcv_time[n][t] == t,
                 #         cv.srewma[n][t] == salpha * ((v.S_f[n][t-c.R] - v.S_f[n][t-c.R-1]) / (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])) + (1-salpha) * cv.srewma[n][t-1],
                 #         cv.srewma[n][t] == cv.srewma[n][t-1]))
-                s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
+                s.add(If((v.S_f[n][t-c.R]) > (v.S_f[n][t-c.R-1]), 
                         cv.rttr[n][t] == cv.rtt[n][t] / cv.min_rtt[n][t],
                         cv.rttr[n][t] == cv.rttr[n][t-1]))
+                
+                # Fast, but wrong?? (maybe not since if you haven't received a packet, the numerator will also be 0) --> but I think div by 0 is undefined and therefore interpretable 
+                # s.add(cv.rewma[n][t] == alpha * ((v.S_f[n][t-c.R] - v.S_f[n][t-c.R-1]) / (cv.last_pkt_rcv_time[n][t] - cv.last_pkt_rcv_time[n][t-1])) + (1-alpha) * cv.rewma[n][t-1])
+                # s.add(cv.sewma[n][t] == alpha * ((v.A_f[n][t] - v.A_f[n][t-1]) / (cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1])) + (1-alpha) * cv.sewma[n][t-1])
+                # s.add(cv.rttr[n][t] == cv.rtt[n][t] / cv.min_rtt[n][t])
 
-                # Find the rule that matches the signal values
-                for i, rule in enumerate(cv.rules):
-                    matches = And(
-                            And(cv.rewma[n][t] >= rule.signal_space["rewma"].low, cv.rewma[n][t] < rule.signal_space["rewma"].high),
-                            And(cv.sewma[n][t] >= rule.signal_space["sewma"].low, cv.sewma[n][t] < rule.signal_space["sewma"].high),
-                            # And(cv.srewma[n][t] >= rule.signal_space["srewma"].low, cv.srewma[n][t] < rule.signal_space["srewma"].high),
-                            And(cv.rttr[n][t] >= rule.signal_space["rttr"].low, cv.rttr[n][t] < rule.signal_space["rttr"].high)
-                        )
-                    s.add(Implies(
-                        matches,
-                        And(cv.chosen_cmult[n][t] == rule.action.cwnd_mult, cv.chosen_cadd[n][t] == rule.action.cwnd_add, cv.chosen_rate[n][t] == rule.action.rate)
-                    ))
-                    s.add(cv.matches[n][t][i] == matches)
+                # Is there a way to just write the above as a linear function? Almost certainly not
+            else:
+                s.add(cv.rewma[n][t] == cv.rewma[n][t-1])
+                s.add(cv.rttr[n][t] == cv.rttr[n][t-1])
+            
+            if t > 0:
+                s.add(If(v.A_f[n][t] > v.A_f[n][t-1],
+                        cv.sewma[n][t] == alpha * ((v.A_f[n][t] - v.A_f[n][t-1]) / (cv.last_pkt_snd_time[n][t] - cv.last_pkt_snd_time[n][t-1])) + (1-alpha) * cv.sewma[n][t-1],
+                        cv.sewma[n][t] == cv.sewma[n][t-1]))
+            else:
+                s.add(cv.sewma[n][t] == cv.sewma[n][t-1])
+                
 
-                # Enforce exactly one rule matches
-                s.add(And(AtMost(*cv.matches[n][t], 1), AtLeast(*cv.matches[n][t], 1)))
+            
+            # s.add(And(cv.chosen_cmult[n][t] == cv.rules[0].action.cwnd_mult, cv.chosen_cadd[n][t] == cv.rules[0].action.cwnd_add, cv.chosen_rate[n][t] == cv.rules[0].action.rate))
 
-                # Set the rate and cwnd based on the rule
-                s.add(If(cv.last_pkt_rcv_time[n][t] == t, 
-                        v.c_f[n][t] == cv.chosen_cmult[n][t] * v.c_f[n][t-1] + cv.chosen_cadd[n][t],
-                        v.c_f[n][t] == v.c_f[n][t-1]))
-                s.add(If(cv.last_pkt_rcv_time[n][t] == t, v.r_f[n][t] == cv.chosen_rate[n][t], v.r_f[n][t] == v.r_f[n][t-1]))
+            # Note, this does not enforce a certain number of rules 
+            # s.add(cv.rule_func_cadd([cv.rewma[n][t], cv.sewma[n][t], cv.rttr[n][t]]) == cv.chosen_cadd[n][t])
+            # s.add(cv.rule_func_cmult([cv.rewma[n][t], cv.sewma[n][t], cv.rttr[n][t]]) == cv.chosen_cmult[n][t])
+            # s.add(cv.rule_func_rate([cv.rewma[n][t], cv.sewma[n][t], cv.rttr[n][t]]) == cv.chosen_rate[n][t])
+
+            # Find the rule that matches the signal values
+            
+            # for i, rule in enumerate(cv.rules):
+            #     matches = And(
+            #             And(cv.rewma[n][t] >= rule.signal_space["rewma"].low, cv.rewma[n][t] < rule.signal_space["rewma"].high),
+            #             And(cv.sewma[n][t] >= rule.signal_space["sewma"].low, cv.sewma[n][t] < rule.signal_space["sewma"].high),
+            #             # And(cv.srewma[n][t] >= rule.signal_space["srewma"].low, cv.srewma[n][t] < rule.signal_space["srewma"].high),
+            #             And(cv.rttr[n][t] >= rule.signal_space["rttr"].low, cv.rttr[n][t] < rule.signal_space["rttr"].high)
+            #         )
+            #     s.add(Implies(
+            #         matches,
+            #         And(cv.chosen_cmult[n][t] == rule.action.cwnd_mult, cv.chosen_cadd[n][t] == rule.action.cwnd_add, cv.chosen_rate[n][t] == rule.action.rate))
+            #     )
+            #     s.add(cv.matches[n][t][i] == matches)
+            # # And(cv.chosen_cmult[n][t] == cv.default_rule.action.cwnd_mult, cv.chosen_cadd[n][t] == cv.default_rule.action.cwnd_add, cv.chosen_rate[n][t] == cv.default_rule.action.rate
+            # s.add(And(cv.chosen_cmult[n][t] == rule.action.cwnd_mult, cv.chosen_cadd[n][t] == rule.action.cwnd_add, cv.chosen_rate[n][t] == rule.action.rate))
+
+            # # If we enforce that the rules are non-overlapping, the atmost should be equivalent. But since the rules may not cover the entire space, we need the at least
+            # # Enforce exactly one rule matches
+            # s.add(AtLeast(*cv.matches[n][t], 1))
+
+            # Set the rate and cwnd based on the rule
+            s.add(If((v.S_f[n][t-c.R]) > (v.S_f[n][t-c.R-1]), 
+                    v.c_f[n][t] == cv.rule_func_cmult([cv.rewma[n][t], cv.sewma[n][t], cv.rttr[n][t]]) * v.c_f[n][t-1] + cv.rule_func_cadd([cv.rewma[n][t], cv.sewma[n][t], cv.rttr[n][t]]),
+                    v.c_f[n][t] == v.c_f[n][t-1]))
+            s.add(If((v.S_f[n][t-c.R]) > (v.S_f[n][t-c.R-1]), v.r_f[n][t] == cv.rule_func_rate([cv.rewma[n][t], cv.sewma[n][t], cv.rttr[n][t]]), v.r_f[n][t] == v.r_f[n][t-1]))
 
     return cv

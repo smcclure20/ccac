@@ -93,7 +93,7 @@ def cca_ma_test(timeout=10):
     # Consider the no loss case for simplicity
     s.add(v.L[0] == 0)
     # Ask for < 10% utilization. Can be made arbitrarily small
-    s.add(v.S[-1] - v.S[0] > 0.1 * c.C * c.T) 
+    # s.add(v.S[-1] - v.S[0] > 0.1 * c.C * c.T) 
     # # Ask for worse-cast RTT of 1.5 * Delay for all packets
     # for t in range(c.T):
     #     s.add(cv.rtt[0][t] <= 1.5 * c.R)
@@ -103,7 +103,7 @@ def cca_ma_test(timeout=10):
     current_time = now.strftime("%H:%M:%S")
     print("Query Start Time =", current_time)
 
-    qres = run_query(c, s, v, 9000)
+    qres = run_query(c, s, v, 54000)#28800
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
